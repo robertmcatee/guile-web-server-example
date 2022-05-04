@@ -1,0 +1,5 @@
+* guile-web-server-example
+A repo containing a basic example of a website written and hosted with Guile
+
+- run guile hello-world.scm
+- browse to localhost:8080
