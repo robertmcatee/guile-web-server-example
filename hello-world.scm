@@ -35,27 +35,32 @@
           (string-append "Resource not found: "
                          (uri->string (request-uri request)))))
 
-(define (debug-page request body)
-  (if (equal? (request-path-components request)
-              '("hacker"))
-      (values '((content-type . (text/plain)))
-              "Hello hacker!")
-      (not-found request))
+(define (site request body)
+  (cond
+   ((null? (request-path-components request))
+    (respond
+     `((h1 "hello world!!")
+       (table
+	(tr (th "header") (th "value"))
+	,@(map (lambda (pair)
+		 `(tr (td (tt ,(with-output-to-string
+				 (lambda () (display (car pair))))))
+		      (td (tt ,(with-output-to-string
+				 (lambda ()
+				   (write (cdr pair))))))))
+	       (request-headers request))))))
+   ((equal? (request-path-components request) '("hacker"))
+    (respond
+     `((h1 "hello hacker!!")
+       (table
+	(tr (th "header") (th "value"))
+	,@(map (lambda (pair)
+		 `(tr (td (tt ,(with-output-to-string
+				 (lambda () (display (car pair))))))
+		      (td (tt ,(with-output-to-string
+				 (lambda ()
+				   (write (cdr pair))))))))
+	       (request-headers request))))))
+   (else (not-found request))))
 
-  (if (null? (request-path-components request))
-      (respond
-       `((h1 "hello world!")
-	 (table
-	  (tr (th "header") (th "value"))
-	  ,@(map (lambda (pair)
-		   `(tr (td (tt ,(with-output-to-string
-				   (lambda () (display (car pair))))))
-			(td (tt ,(with-output-to-string
-				   (lambda ()
-				     (write (cdr pair))))))))
-		 (request-headers request)))))
-      (not-found request)))
-
-(run-server debug-page)
-;;(run-server hello-hacker-handler)
-;;(run-server hello-world-handler)
+(run-server site)
