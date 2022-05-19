@@ -1,7 +1,7 @@
 (use-modules (web server))
 (use-modules (web request)
-             (web response)
-             (web uri)
+	     (web response)
+	     (web uri)
 	     (sxml simple))
 
 (define (templatize title body)
