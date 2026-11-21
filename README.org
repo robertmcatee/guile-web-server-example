@@ -1,5 +1,97 @@
 * guile-web-server-example
-A repo containing a basic example of a website written and hosted with Guile
 
-- run guile hello-world.scm
-- browse to localhost:8080
+This repository started, in 2022, as a hello-world: a basic example of
+a website written and hosted with Guile. In October 2026 it grew up.
+The servers below are the ones actually built for
+[[https://www.cenzontle.us][cenzontle.us]] — a Raspberry Pi Zero W serving a 1kb Club page, a
+blog, and an amateur-radio station page — tested against the live
+site byte for byte, benchmarked against nginx, and, for one
+afternoon, run in production. The hello world is gone; this is the
+real thing that replaced it.
+
+** The servers
+
+*** cenzontle.scm — the trial server
+Pure Guile, standard library only: =(web server)= serving static
+files from a docroot on port 8080. Traversal guard, directory index,
+deliberately minimal headers — no =Content-Type=, the same call the
+production nginx makes with =more_clear_headers=. Verified
+byte-identical to nginx's output for the whole site, /a/ subtree
+included.
+
+Its one real flaw is structural: it serves one request at a time, so
+a client that connects and stalls parks everybody.
+
+*** cenzontle-fibers.scm — the Fibers variant
+The same handler on =(fibers web server)=: a fiber per connection on
+an epoll scheduler, port 8083. The parked-client flaw disappears — in
+testing, a second client was answered in 3.7 ms while the first sat
+mid-request, and a 20-request concurrent burst went 20/20. Binds
+localhost by default; see the production server's header for why
+Fibers did not make the final stack.
+
+*** cenzontle-server.scm — the production server
+The build that was rehearsed, cut over, and rolled back (story
+below). One Guile process, two listeners:
+
+- =:443= HTTPS via GnuTLS, with *all* GnuTLS work — credentials,
+  accept, handshake, serving — on one dedicated worker thread,
+  sequentially. The docroot is preloaded into an in-memory cache.
+- =:80= ACME http-01 challenges read fresh from disk; everything
+  else 301-redirects to HTTPS.
+
+One request per connection, and every wait gated with =select()= and
+a deadline, so a stalled client costs seconds, not forever. The
+header comment in the file is the design document: every choice in
+it was measured, most of them the hard way.
+
+=cenzontle-server.service= is its systemd unit.
+
+** Running them
+
+#+begin_src sh
+# Trial (Guile 3.0, no dependencies):
+CENZONTLE_DOCROOT=/path/to/site guile -s cenzontle.scm
+# browse to localhost:8080
+
+# Fibers variant (needs guile-fibers):
+CENZONTLE_DOCROOT=/path/to/site guile -s cenzontle-fibers.scm
+
+# Production (needs guile-gnutls and a certificate):
+CENZONTLE_CERT=/path/fullchain.pem CENZONTLE_KEY=/path/privkey.pem \
+  guile -s cenzontle-server.scm
+#+end_src
+
+Environment variables: =CENZONTLE_DOCROOT=, =CENZONTLE_CERT=,
+=CENZONTLE_KEY=, =CENZONTLE_PORT_HTTPS=, =CENZONTLE_PORT_HTTP= — see
+each file's header.
+
+** What happened in production
+
+Benchmarked on identical hardware and docroot, the Guile servers
+reached functional parity with nginx at this workload: throughput
+within noise of nginx 1.24, sub-millisecond time to first byte, and
+the front page on the wire at 108–109 bytes, matching production.
+
+On 23 October 2026 the production server was cut over for real:
+GnuTLS installed on the Pi, an alt-port rehearsal passed, nginx was
+stopped, and this server bound 80/443 — including a successful
+certbot renewal dry-run through its own HTTP listener. Then the soak
+failed it: TLS handshakes began dying with "Public key signing has
+failed". The forensics are in =cenzontle-server.scm='s header and
+came down to the platform, not the design: Debian bullseye's
+=guile-gnutls= 3.7.1 is built for Guile 2.2, and its signing path
+fails nondeterministically per-process. The same code on the modern
+stack (Guile 3.0 + bindings 3.7.9) never failed a handshake in
+testing, then or since.
+
+So the cutover was rolled back the same day, and nginx serves
+cenzontle.us today. The swap is not abandoned — it waits on the Pi's
+already-planned refresh to Raspberry Pi OS (Debian trixie), where
+Guile 3.0, Fibers, and current GnuTLS bindings are all stock
+packages. The servers in this repo are ready for that day; they were
+re-verified on the modern stack before this README was written.
+
+** Licence
+
+GPLv3 — see =LICENSE=.
