@@ -1,0 +1,14 @@
+[Unit]
+Description=Cenzontle web server (Guile)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/guile-3.0 -s /usr/local/lib/cenzontle/cenzontle-server.scm
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
